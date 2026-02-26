@@ -1,10 +1,10 @@
 "use client";
 
+import ReactMarkdown from 'react-markdown';
+
 // Prevent Next.js static prerendering so the crash happens at request time
 // (matching production behaviour, where the challenge page is dynamic/auth-gated).
 export const dynamic = "force-dynamic";
-
-import ReactMarkdown from "react-markdown";
 
 // The &nbsp without a closing semicolon is the malformed HTML entity from Post ID 125696.
 // parse-entities@1.2.2 emits a namedNotTerminated warning (code 1) for it, which flows into
