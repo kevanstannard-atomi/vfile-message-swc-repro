@@ -141,16 +141,86 @@ from the **learn app's** direct copy of `@getatomi/neon @ 59.18.0`.
 
 ---
 
+## Warning codes and crash surface
+
+remark-parse's decode module suppresses **only warning code 3** (`namedEmpty`, e.g. bare `&&`).
+Every other warning code reaches `vfile.message()` → broken `VMessage` → crash.
+
+The warning codes emitted by `parse-entities@1.2.2`:
+
+| Code | Name | Trigger | Suppressed? | Crashes? |
+|------|------|---------|-------------|---------|
+| 1 | `namedNotTerminated` | Legacy entity without `;` (e.g. `&nbsp`, `&middot`) | No | **Yes** |
+| 2 | `numericNotTerminated` | Numeric entity without `;` (e.g. `&#160`) | No | **Yes** |
+| 3 | `namedEmpty` | Non-legacy named entity without `;` (e.g. `&mdash`, `&hellip`) OR bare `&&` | **Yes** | No |
+| 4 | `numericEmpty` | `&#` with no digits | No | **Yes** |
+| 5 | `namedUnknown` | Terminated entity not in HTML5 table (e.g. `&foo;`, `&random;`) | No | **Yes** |
+| 6 | `numericDisallowed` | Numeric entity referencing a disallowed codepoint | No | **Yes** |
+| 7 | `numericProhibited` | Numeric entity outside permissible Unicode range | No | **Yes** |
+
+**Key finding:** non-legacy named entities without `;` (code 3 — e.g. `&mdash`, `&ndash`,
+`&hellip`) are **safe** because remark suppresses them. But terminated unknown entities like
+`&foo;` (code 5) **do crash**, even though they look well-formed.
+
+---
+
 ## Fixes
+
+### Summary
+
+**Fix 1** adds the missing semicolon to legacy HTML entities (e.g. `&nbsp` → `&nbsp;`).
+
+**Fix 2** escapes the ampersand in any entity reference that has a semicolon but isn't a real HTML entity (e.g. `&foo;` → `&amp;foo;`), so it renders as literal text instead of being parsed.
+
+---
 
 Either fix alone is sufficient to stop the crash.
 
-### Fix A — Content (immediate)
+### Fix A — Content patch (immediate workaround)
 
-Change `&nbsp` → `&nbsp;` in the question prompt. No parse warning is emitted; `VMessage` is
-never called.
+Patch the Markdown string before passing it to `ReactMarkdown`, covering the two crash-inducing
+content patterns discovered so far:
 
-**Affected content:** Post ID `125696`, prompt text containing `60&nbspkm/h`.
+**Pass 1 — `namedNotTerminated` (code 1):** Add missing `;` to any legacy named entity.
+The legacy entity set (`character-entities-legacy@1.1.4`) is the exact list that
+`parse-entities` can prefix-match without a semicolon — 100 names total, including `nbsp`,
+`middot`, `amp`, `lt`, `gt`, etc.
+
+```js
+// character-entities-legacy names joined as alternation
+const MALFORMED_ENTITY_RE = new RegExp(`&(${LEGACY_ENTITY_NAMES})(?!;)`, 'g');
+result = markdown.replace(MALFORMED_ENTITY_RE, '&$1;');
+```
+
+**Pass 2 — `namedUnknown` (code 5):** Escape `&` to `&amp;` for any terminated entity whose
+name is not in the HTML5 named character reference table (`character-entities@1.2.4`, 2222
+entries). This renders the sequence as literal text rather than triggering a parse warning.
+
+```js
+import characterEntities from 'character-entities/index.json';
+const ALL_ENTITIES = new Set(Object.keys(characterEntities));
+result = result.replace(/&([a-zA-Z][a-zA-Z0-9]*);/g, (match, name) =>
+  ALL_ENTITIES.has(name) ? match : `&amp;${name};`
+);
+```
+
+A reference implementation with tests is in `test-fix.mjs`.
+
+**Bundle size impact of the character-entities import:**
+
+| Measure | Size |
+|---|---|
+| Raw JSON (`character-entities@1.2.4`) | 43 kB |
+| Gzipped JSON | ~12 kB |
+| Page chunk increase (uncompressed) | +13.3 kB |
+| First Load JS increase (uncompressed) | +13 kB |
+
+The chunk delta (~13 kB) is smaller than the raw JSON (43 kB) due to minification of key
+strings. Over the wire (gzipped) the cost is approximately **+12 kB per page** that uses the
+patched component. If the fix is applied server-side only (e.g. sanitising content before
+storing or serving it), the client pays nothing.
+
+**Affected content:** Post ID `125696`, prompt text containing `60&nbspkm/h` (code 1 case).
 
 ### Fix B — Code (durable)
 

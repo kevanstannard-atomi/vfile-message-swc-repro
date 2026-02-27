@@ -24,8 +24,19 @@ const LEGACY_ENTITY_NAMES = [
   "amp","gt","lt",
 ].join("|");
 const MALFORMED_ENTITY_RE = new RegExp(`&(${LEGACY_ENTITY_NAMES})(?!;)`, "g");
+
+import characterEntities from "character-entities/index.json";
+const ALL_ENTITIES = new Set(Object.keys(characterEntities));
+const UNKNOWN_TERMINATED_RE = /&([a-zA-Z][a-zA-Z0-9]*);/g;
+
 function fixMalformedEntities(md) {
-  return md.replace(MALFORMED_ENTITY_RE, "&$1;");
+  // Pass 1: add missing ; to legacy entities (namedNotTerminated, code 1)
+  let result = md.replace(MALFORMED_ENTITY_RE, "&$1;");
+  // Pass 2: escape & for terminated but unknown entities (namedUnknown, code 5)
+  result = result.replace(UNKNOWN_TERMINATED_RE, (match, name) =>
+    ALL_ENTITIES.has(name) ? match : `&amp;${name};`
+  );
+  return result;
 }
 
 // Prevent Next.js static prerendering so the crash happens at request time
@@ -47,6 +58,12 @@ const CONTENT = "_An ambulance travelling at 60&nbspkm/h drives past you..._";
 // These should render without error.
 const CONTENT_FOO = "Test with unknown entity: &foo bar";
 const CONTENT_RANDOM = "Test with unknown entity: &random bar";
+// NOTE: &foo; and &random; (terminated but unknown entities) also crash the
+// build — parse-entities emits namedUnknown (code 5), which is not suppressed
+// by remark's decode module and hits the broken VMessage constructor.
+// They are tested in test-fix.mjs but omitted here to keep the build passing.
+const CONTENT_FOO_TERMINATED = "Test with terminated unknown entity: &foo; bar";
+const CONTENT_RANDOM_TERMINATED = "Test with terminated unknown entity: &random; bar";
 
 export default function Home() {
   return (
@@ -62,6 +79,8 @@ export default function Home() {
       <hr />
       <ReactMarkdown source={CONTENT_FOO} />
       <ReactMarkdown source={CONTENT_RANDOM} />
+      <ReactMarkdown source={fixMalformedEntities(CONTENT_FOO_TERMINATED)} />
+      <ReactMarkdown source={fixMalformedEntities(CONTENT_RANDOM_TERMINATED)} />
     </main>
   );
 }

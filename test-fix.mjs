@@ -121,8 +121,23 @@ const LEGACY_ENTITY_NAMES = [
 // So we must insert ; right after the entity name regardless of what follows.
 const MALFORMED_ENTITY_RE = new RegExp(`&(${LEGACY_ENTITY_NAMES})(?!;)`, "g");
 
+// Fix 2: &NAME; where NAME is not a valid HTML5 named entity.
+// parse-entities emits namedUnknown (code 5), which remark does not suppress,
+// crashing the broken VMessage constructor. Escape & → &amp; so it renders
+// as literal text instead of being parsed as an entity reference.
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const ALL_ENTITIES = new Set(Object.keys(require("character-entities")));
+const UNKNOWN_TERMINATED_RE = /&([a-zA-Z][a-zA-Z0-9]*);/g;
+
 function fixMalformedEntities(markdown) {
-  return markdown.replace(MALFORMED_ENTITY_RE, "&$1;");
+  // Pass 1: add missing ; to legacy entities (namedNotTerminated, code 1)
+  let result = markdown.replace(MALFORMED_ENTITY_RE, "&$1;");
+  // Pass 2: escape & for terminated but unknown entities (namedUnknown, code 5)
+  result = result.replace(UNKNOWN_TERMINATED_RE, (match, name) =>
+    ALL_ENTITIES.has(name) ? match : `&amp;${name};`
+  );
+  return result;
 }
 
 let passed = 0;
@@ -162,6 +177,10 @@ test("&hellip not in legacy table, unchanged", "wait&hellip", "wait&hellip");
 // Completely unknown names — not in legacy table, no warning at all → unchanged.
 test("&foo unknown entity, unchanged", "a &foo bar", "a &foo bar");
 test("&random unknown entity, unchanged", "a &random bar", "a &random bar");
+// Unknown names with semicolon — namedUnknown (code 5), not suppressed → crashes.
+// Fix: escape & → &amp; so they render as literal text.
+test("&foo; terminated unknown entity, escaped", "a &foo; bar", "a &amp;foo; bar");
+test("&random; terminated unknown entity, escaped", "a &random; bar", "a &amp;random; bar");
 test(
   "multiple in one string",
   "60&nbspkm/h and a&middotb",

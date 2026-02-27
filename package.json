@@ -9,6 +9,7 @@
   },
   "packageManager": "pnpm@10.28.2",
   "dependencies": {
+    "character-entities": "^1.2.4",
     "next": "15.5.10",
     "react": "18.x",
     "react-dom": "18.x",
