@@ -4,6 +4,10 @@ import ReactMarkdown from 'react-markdown';
 
 // Fix malformed legacy HTML entities (missing semicolon) before they reach
 // parse-entities, preventing the vfile-message SWC minification crash.
+//
+// This hardcoded list could be replaced with an import from the authoritative package:
+//   import legacy from 'character-entities-legacy/index.json';
+//   const LEGACY_ENTITY_NAMES = Object.keys(legacy).join('|');
 const LEGACY_ENTITY_NAMES = [
   "brvbar","curren","frac12","frac14","frac34",
   "AElig","Aacute","Acirc","Agrave","Aring","Atilde","Auml",
