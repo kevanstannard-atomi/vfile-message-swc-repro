@@ -159,6 +159,9 @@ test("&lt missing semicolon", "1&lt2", "1&lt;2");
 test("&gt missing semicolon", "2&gt1", "2&gt;1");
 // hellip is also NOT in the legacy table → type-3 warning → suppressed → unchanged.
 test("&hellip not in legacy table, unchanged", "wait&hellip", "wait&hellip");
+// Completely unknown names — not in legacy table, no warning at all → unchanged.
+test("&foo unknown entity, unchanged", "a &foo bar", "a &foo bar");
+test("&random unknown entity, unchanged", "a &random bar", "a &random bar");
 test(
   "multiple in one string",
   "60&nbspkm/h and a&middotb",
